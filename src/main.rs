@@ -5,6 +5,7 @@ mod orbitprop;
 use orbitprop::parse_mean_elements;
 
 fn main() ->  Result<(), Box<dyn std::error::Error>> {
+    dotenvy::dotenv().ok();
     
     //Logging into space-track and requesting 
     get_sat_data()?;

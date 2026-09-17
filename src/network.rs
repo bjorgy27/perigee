@@ -18,9 +18,12 @@ pub fn get_sat_data() -> Result<(), Box<dyn std::error::Error>> {
         .cookie_store(true)
         .build()?;
 
+    let identity = std::env::var("SPACETRACK_USER")?;
+    let password = std::env::var("SPACETRACK_PASS")?;
+
     let mut credentials = HashMap::new();
-        credentials.insert("identity", "xxxxx");
-        credentials.insert("password","xxxxxx");
+        credentials.insert("identity", identity.as_str());
+        credentials.insert("password", password.as_str());
 
     let response = client.post(LOGIN)
         .form(&credentials)
