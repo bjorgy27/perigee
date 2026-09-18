@@ -1,5 +1,5 @@
 [package]
-name = "testAPI"
+name = "perigee"
 version = "0.1.0"
 edition = "2024"
 
@@ -7,3 +7,4 @@ edition = "2024"
 nalgebra = "0.35.0"
 reqwest = { version = "0.12", features = ["blocking", "json", "cookies"] }
 roxmltree = "0.21.1"
+dotenvy = "0.15"

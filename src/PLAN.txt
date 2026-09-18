@@ -1,0 +1,128 @@
+satTrack - Project Plan
+=======================
+
+GOAL
+----
+Load all LEO satellite targets from space-track, propagate every orbit for the
+whole day from the station's position, rank the best targets in 30-minute
+windows, and let the user pick one. The dish points to the predicted position,
+a control loop trims to the best SINR, telemetry is recorded to file, and at
+LOS the track ends and the next target can be chosen. A GUI wraps all of it.
+
+
+ARCHITECTURE
+------------
+Cargo workspace with two crates:
+
+  engine/   library crate, no GUI dependencies
+            fetch, propagation, pass finding, ranking, tracker state machine
+  gui/      thin binary that calls the engine
+
+Keep a CLI in the engine for testing without the GUI. The engine must work and
+record a real pass before the GUI is started.
+
+
+1. CATALOG FETCH
+----------------
+- Space-track class `gp` (current element per object), not `gp_history`.
+- Server-side filters:
+    MEAN_MOTION/>11.25      period under 128 min = LEO
+    DECAY_DATE/null-val     drop reentered objects
+    OBJECT_TYPE/PAYLOAD     drop rocket bodies and debris
+- Rate limits: ~30 queries/min, full catalog pull at most hourly.
+  Cache the response to disk and reuse it for the day.
+- Session cookie expires after a couple of hours; engine needs a re-login path.
+- NORAD ID and station position come from config / arguments, never hardcoded.
+- Credentials: .env for now, OS keychain (`keyring` crate) once the GUI exists.
+
+
+2. TRANSMITTER FILTER (the biggest gap)
+---------------------------------------
+Space-track says where things are, not what they transmit. Most LEO payloads
+have nothing receivable. Intersect the catalog with the SatNOGS DB
+(db.satnogs.org, free API, transmitters by NORAD ID: frequency, mode, alive).
+Keep only satellites with transmitters in the bands the dish and receiver cover.
+Expect thousands -> a few hundred.
+
+
+3. PROPAGATION
+--------------
+- SGP4 / SDP4 is the correct model for TLE/OMM mean elements. Use the `sgp4`
+  crate now; write our own later as a learning exercise, checked against it.
+- Cost: ~1 us per evaluation. 5000 sats x 1440 min ~ 7M evals = seconds
+  single-threaded, under a second with `rayon`.
+- Pipeline per time step:
+    SGP4 -> TEME position/velocity
+    rotate TEME -> ECEF with Greenwich sidereal time
+    subtract station ECEF (from lat/lon/alt)
+    rotate to local East-North-Up
+    azimuth, elevation, range, range rate (Doppler)
+- Coarse 1-min step to detect elevation crossing the mask, then bisection to
+  refine AOS, max elevation, LOS.
+- Elevation mask 5-10 deg, not 0. Terrain and refraction kill the last degrees.
+- Accuracy: ~1 km at epoch, a few km/day. At 400 km range that is 0.15 deg;
+  at the horizon 0.025 deg. Dish beamwidth ~ 70 * lambda / D degrees, so the
+  prediction is always inside the beam. Use fresh element sets.
+
+
+4. RANKING
+----------
+- Score = max elevation x pass duration, weighted by transmitter status and
+  SatNOGS observation reports. Keep the scoring function separate so it can be
+  tuned.
+- Bucket passes by AOS into 30-minute windows, take the top 10 per window.
+- Verify pass predictions against n2yo / gpredict before trusting them.
+
+
+5. TRACKER
+----------
+State machine: Idle -> Slew to AOS point -> Wait -> Track -> LOS -> Idle
+
+- Feed-forward: predicted az/el is the command every cycle.
+- Trim: a single receiver gives SINR, not direction, so use step-track:
+  dither a small amount in each axis, keep the direction that improved SINR.
+  Bound the trim to a fraction of the beamwidth so a fade cannot walk the dish
+  off the satellite.
+- Feed predicted range rate to the receiver for Doppler correction. At LEO
+  speeds this matters more than pointing.
+- Mount reports commanded and actual az/el for the GUI.
+
+
+6. STORAGE
+----------
+Per pass: raw IQ if disk allows, demodulated frames, and a metadata file with
+satellite, transmitter, timestamps, predicted vs trimmed pointing. Raw IQ lets
+us re-demodulate later with a better decoder.
+
+
+7. GUI
+------
+- Space-track login screen (credentials into OS keychain).
+- Orbit visualization on Earth.
+- Dish visualization: small 3D model rotated by az/el, beam cone, predicted
+  satellite direction so the trim offset is visible.
+- Orbit selector tab: 30-minute windows, top 10 per window, pick one.
+- Pass status / telemetry view.
+
+Toolkit options:
+  egui (eframe)   pure Rust, easy, great for forms/tabs/tables. Globe is the
+                  hard part: 2D map with ground tracks, or three-d / wgpu.
+  Tauri + Cesium  web frontend, CesiumJS is built for orbits on a 3D globe.
+                  Best globe for least code, but UI is written in JS/TS.
+  Bevy            game engine, heavier than needed.
+
+Recommendation: egui if staying in Rust with a 2D map, Tauri + Cesium if the
+globe is a priority.
+
+
+BUILD ORDER
+-----------
+1. Catalog fetch and cache
+2. Pass finder with a text report
+3. SatNOGS transmitter filter
+4. Ranking and 30-minute windows
+5. Hardware loop: mount driver, step-track, Doppler, recording
+6. GUI
+
+Steps 1-4 are pure software, verifiable against n2yo / gpredict before any
+dish moves.
