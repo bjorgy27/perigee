@@ -12,19 +12,33 @@
 /// 
 /// 
 use reqwest;
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
+use serde::Deserialize;
+type Error = Box<dyn std::error::Error>;
 
 
 
 //SatNOGS DB Api
-const SN_URL: &str = "https://db.satnogs.org/api/transmitters/";
+const SN_URL: &str = "https://db.satnogs.org/api/transmitters/?alive=true&status=active&type=Transmitter&format=json";
+
+
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct Transmitter {
+    pub norad_cat_id: Option<u32>,
+    pub description: String,
+    pub downlink_low: Option<u64>,
+    pub downlink_high: Option<u64>,
+    pub mode: Option<String>,
+    pub baud: Option<f64>,
+    pub service: String,
+}
 
 
 
 //Pulling list of every transmitting satellite + transmit frequency
-pub fn get_norad_id() -> Result<(), Box<dyn std::error::Error>>{
+pub fn get_norad_id() -> Result<Vec<Transmitter>, Error> {
 
     let norad_ids = reqwest::blocking::get(SN_URL)?;
     let status = norad_ids.status();
@@ -32,17 +46,23 @@ pub fn get_norad_id() -> Result<(), Box<dyn std::error::Error>>{
 
     println!("SatNOGS Status = {}", status);
 
-    let mut file = File::create("NORADs.xml")?;
+    let mut file = File::create("NORADs.json")?;
     write_file(&mut file, &body)?;
 
-    Ok(())
+    //The JSON body is an array of transmitter objects -> Vec<Transmitter>
+    let transmitters: Vec<Transmitter> = serde_json::from_str(&body)?;
+
+    Ok(transmitters)
 
 }
-
 
 
 
 fn write_file(file: &mut File, data: &str) -> std::io::Result<()> {
     file.write_all(data.as_bytes())?;
     Ok(())
+}
+
+pub fn norad_ids(transmitters: &[Transmitter]) -> Vec<u32> {
+    transmitters.iter().filter_map(|t| t.norad_cat_id).collect()
 }
