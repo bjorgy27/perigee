@@ -38,7 +38,8 @@ pub type ElSetMatrix = OMatrix<f64, Const<9>, Dyn>;
 
 
 //Space-Track API
-const ST_URL: &str = "https://www.space-track.org/basicspacedata/query/class/gp/MEAN_MOTION/>11.25/DECAY_DATE/null-val/OBJECT_TYPE/PAYLOAD/orderby/NORAD_CAT_ID/format/json";
+const ST_URL: &str = "https://www.space-track.org/basicspacedata/query/class/gp/MEAN_MOTION/>11.25/DECAY_DATE/null-val/OBJECT_TYPE/PAYLOAD/EPOCH/>now-30/orderby/NORAD_CAT_ID/format/json";
+//const ST_URL: &str = "https://www.space-track.org/basicspacedata/query/class/gp_history/NORAD_CAT_ID/25544/orderby/EPOCH desc/limit/22/format/json";
 const ST_LOGIN: &str = "https://www.space-track.org/ajaxauth/login";
 
 
