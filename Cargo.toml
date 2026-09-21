@@ -3,8 +3,15 @@ name = "perigee"
 version = "0.1.0"
 edition = "2024"
 
+[workspace]
+members = ["orbit"]
+
 [dependencies]
-nalgebra = "0.35.0"
+perigee-orbit = { path = "orbit" }
+nalgebra = { version = "0.35.0", features = ["serde-serialize"] }
+chrono = "0.4"
+chrono-tz = "0.10"
 reqwest = { version = "0.12", features = ["blocking", "json", "cookies"] }
-roxmltree = "0.21.1"
 dotenvy = "0.15"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

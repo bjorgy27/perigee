@@ -18,7 +18,7 @@ use std::io::Write;
 use std::fmt::Display;
 use std::str::FromStr;
 use serde::{Deserialize, Deserializer};
-use nalgebra::{vector, SVector, OMatrix, Const, Dyn};
+use nalgebra::{vector, SVector};
 type Error = Box<dyn std::error::Error>;
 
 //One element set, 9 rows:
@@ -32,8 +32,8 @@ type Error = Box<dyn std::error::Error>;
 //  7 mean anomaly       (deg)
 //  8 B*                 (1/earth radii)
 pub type ElSet = SVector<f64, 9>;
-//Element sets side by side: 9 rows, one column per satellite
-pub type ElSetMatrix = OMatrix<f64, Const<9>, Dyn>;
+//Element sets side by side: 9 rows, one column per satellite (defined in the perigee-orbit crate)
+pub use perigee_orbit::ElSetMatrix;
 
 
 

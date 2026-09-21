@@ -1,0 +1,11 @@
+[package]
+name = "perigee-orbit"
+version = "0.1.0"
+edition = "2024"
+description = "Perigee's orbit math: element sets to state vectors, RK4 + J2 + drag propagation. No network, no files, so the TV app can use it too."
+
+[dependencies]
+nalgebra = { version = "0.35", features = ["serde-serialize"] }
+
+[dev-dependencies]
+serde_json = "1"

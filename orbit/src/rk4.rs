@@ -15,6 +15,7 @@
 use nalgebra::{Vector3, Vector6, Matrix6xX};
 use crate::constants::*;
 
+
 //Integrate one satellite from t = 0 to t_final, storing the state after every step.
 //Returns a 6 x M matrix: column i is the state at time i * h seconds (last column lands exactly on t_final).
 pub fn propagate(y0: Vector6<f64>, t_final: f64, h: f64, bstar: f64) -> Matrix6xX<f64> {
@@ -40,7 +41,9 @@ pub fn propagate(y0: Vector6<f64>, t_final: f64, h: f64, bstar: f64) -> Matrix6x
 
 
 
-fn rk4_step(y: Vector6<f64>, t: f64, h: f64, bstar: f64) -> Vector6<f64>{
+//One RK4 step of h seconds from state y at time t (seconds since epoch). Public so the budgeted
+//Propagator can take single steps and keep its own state between frames.
+pub fn rk4_step(y: Vector6<f64>, t: f64, h: f64, bstar: f64) -> Vector6<f64>{
 
     //K1 Term
     let k1 = dynamics(y,t,bstar);
