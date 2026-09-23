@@ -41,6 +41,8 @@ pub use perigee_orbit::ElSetMatrix;
 const ST_URL: &str = "https://www.space-track.org/basicspacedata/query/class/gp/MEAN_MOTION/>11.25/DECAY_DATE/null-val/OBJECT_TYPE/PAYLOAD/EPOCH/>now-30/orderby/NORAD_CAT_ID/format/json";
 //const ST_URL: &str = "https://www.space-track.org/basicspacedata/query/class/gp_history/NORAD_CAT_ID/25544/orderby/EPOCH desc/limit/22/format/json";
 const ST_LOGIN: &str = "https://www.space-track.org/ajaxauth/login";
+//One small query that proves a session works: the newest element set of the ISS
+const ST_PROBE: &str = "https://www.space-track.org/basicspacedata/query/class/gp/NORAD_CAT_ID/25544/format/json";
 
 
 
@@ -116,6 +118,48 @@ pub fn get_sat_data() -> Result<Vec<Omm>, Error> {
 } 
 
 
+
+//"perigee login": log in with the credentials from the environment (or .env) and prove the session with
+//the ISS probe query. One fact per printed line so a caller can follow along; Err (exit code 1) when the
+//site refuses the credentials, answers with no records, or cannot be reached. Downloads nothing else.
+pub fn login_check() -> Result<(), Error> {
+    let identity = std::env::var("SPACETRACK_USER").map_err(|_| "SPACETRACK_USER is not set (put it in .env or the environment)")?;
+    let password = std::env::var("SPACETRACK_PASS").map_err(|_| "SPACETRACK_PASS is not set (put it in .env or the environment)")?;
+    println!("LOGIN identity {identity}");
+
+    let client = reqwest::blocking::Client::builder()
+        .cookie_store(true)
+        .timeout(std::time::Duration::from_secs(25))
+        .build()?;
+    let mut credentials = HashMap::new();
+        credentials.insert("identity", identity.as_str());
+        credentials.insert("password", password.as_str());
+
+    let started = std::time::Instant::now();
+    let response = client.post(ST_LOGIN).form(&credentials).send()?;
+    let status = response.status();
+    let body = response.text()?;
+    println!("LOGIN status {status} in {:.2} s", started.elapsed().as_secs_f64());
+    //Space-Track answers 200 either way; a refused login carries {"Login":"Failed"} in the body
+    if !status.is_success() || body.contains("Failed") {
+        println!("LOGIN DENIED {}", body.trim());
+        return Err("Space-Track refused the credentials".into());
+    }
+
+    let probe = client.get(ST_PROBE).send()?;
+    let pstatus = probe.status();
+    let ptext = probe.text()?;
+    let records: Vec<Omm> = serde_json::from_str(&ptext).unwrap_or_default();
+    match records.first() {
+        Some(o) => println!("PROBE status {pstatus}  ISS {}  epoch {}  {:.4} rev/day", o.norad_cat_id, o.epoch, o.mean_motion),
+        None => {
+            println!("PROBE status {pstatus}  no records: {}", ptext.chars().take(120).collect::<String>().trim());
+            return Err("the session did not return data".into());
+        }
+    }
+    println!("LOGIN OK");
+    Ok(())
+}
 
 //One OMM record -> one 9-row column
 fn to_elset(omm: &Omm) -> Result<ElSet, Error> {

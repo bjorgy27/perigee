@@ -37,6 +37,11 @@ use spacetrack::ElSetMatrix;
 fn main() ->  Result<(), Box<dyn std::error::Error>> {
     dotenvy::dotenv().ok();
 
+    //"perigee login": log in to Space-Track with SPACETRACK_USER / SPACETRACK_PASS and prove the session
+    //with one tiny query; fetches nothing else. perigee-control's boot page runs this to check credentials.
+    if std::env::args().nth(1).as_deref() == Some("login") {
+        return spacetrack::login_check();
+    }
     //"perigee rank": re-score from the saved files, no Space-Track / SatNOGS fetch, no propagation
     if std::env::args().nth(1).as_deref() == Some("rank") {
         return rank_only();
