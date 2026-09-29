@@ -34,6 +34,13 @@ use nalgebra::Matrix6xX;
 use spacetrack::ElSetMatrix;
 
 
+
+//How far ahead the ranking looks, in minutes: PERIGEE_HORIZON_MIN (default 15, "what can I point at
+//now"). Set it to a few hours, or 1440 for the whole propagated day, to plan ahead instead.
+fn horizon_min() -> f64 {
+    std::env::var("PERIGEE_HORIZON_MIN").ok().and_then(|v| v.trim().parse::<f64>().ok()).filter(|v| *v > 0.0).unwrap_or(15.0)
+}
+
 fn main() ->  Result<(), Box<dyn std::error::Error>> {
     dotenvy::dotenv().ok();
 
@@ -69,13 +76,16 @@ fn main() ->  Result<(), Box<dyn std::error::Error>> {
 
     //Satellite types for the viewer's TYPE filter (CelesTrak groups + SatNOGS services + name rules)
     let tracked: Vec<u32> = (0..sorted_sats.ncols()).map(|c| sorted_sats[(0, c)] as u32).collect();
-    match categories::build(&tracked, &transmitters, true).and_then(|c| categories::write(&c)) {
+    let mean_motion: std::collections::HashMap<u32, f64> =
+        (0..sorted_sats.ncols()).map(|c| (sorted_sats[(0, c)] as u32, sorted_sats[(2, c)])).collect();
+    match categories::build(&tracked, &transmitters, true, &mean_motion).and_then(|c| categories::write(&c)) {
         Ok(()) => {}
         Err(e) => println!("WARNING: categories not written: {e}"),
     }
 
-    //Calculate initial state vectors + epoch + sim dt all in julian time; propagate 12 h past now
-    let t_end = geodesy::now_jd() + 0.5;
+    //Calculate initial state vectors + epoch + sim dt all in julian time; propagate one day past now
+    //so the viewer can be scrubbed forward and still have orbits (and ranked passes) to show.
+    let t_end = geodesy::now_jd() + 1.0;
     let (x0, _jd_epoch, dt) = sv_from_coe(&sorted_sats, t_end);
     //println!("State Vector = {:?}", x0);
 
@@ -100,7 +110,9 @@ fn main() ->  Result<(), Box<dyn std::error::Error>> {
     //Rank the passes in progress now or starting within 15 minutes
     let names = score::load_names("ELSET.json");
     let weights = score::Weights::standard();
-    let ranks = score::rank_passes(&all_passes, &names, &transmitters, &weights, jd_now, 15.0);
+    let horizon = horizon_min();
+    println!("Ranking horizon = {horizon:.0} min");
+    let ranks = score::rank_passes(&all_passes, &names, &transmitters, &weights, jd_now, horizon);
     score::print_ranks(&ranks, 10);
 
     //Look angle tables (az / el / range vs time) for every ranked pass, best first
@@ -111,7 +123,7 @@ fn main() ->  Result<(), Box<dyn std::error::Error>> {
     std::fs::write("LOOK_ANGLES.json", serde_json::to_string_pretty(&tracks)?)?;
 
     //Settings + entries together, so the viewer can show how each score was built
-    let report = score::report(ranks, &weights, &station, &region, 15.0, jd_now);
+    let report = score::report(ranks, &weights, &station, &region, horizon, jd_now);
     std::fs::write("SATELLITE_RANKS.json", serde_json::to_string_pretty(&report)?)?;
 
     Ok(())
@@ -125,7 +137,9 @@ fn categories_only() -> Result<(), Box<dyn std::error::Error>> {
     let sorted_sats: ElSetMatrix = serde_json::from_str(&std::fs::read_to_string("SORTED_SATS.json")?)?;
     let transmitters: Vec<satnogs::Transmitter> = serde_json::from_str(&std::fs::read_to_string("NORADs.json")?)?;
     let tracked: Vec<u32> = (0..sorted_sats.ncols()).map(|c| sorted_sats[(0, c)] as u32).collect();
-    let cats = categories::build(&tracked, &transmitters, true)?;
+    let mean_motion: std::collections::HashMap<u32, f64> =
+        (0..sorted_sats.ncols()).map(|c| (sorted_sats[(0, c)] as u32, sorted_sats[(2, c)])).collect();
+    let cats = categories::build(&tracked, &transmitters, true, &mean_motion)?;
     categories::write(&cats)
 }
 
@@ -150,7 +164,9 @@ fn rank_only() -> Result<(), Box<dyn std::error::Error>> {
 
     let names = score::load_names("ELSET.json");
     let weights = score::Weights::standard();
-    let ranks = score::rank_passes(&all_passes, &names, &transmitters, &weights, jd_now, 15.0);
+    let horizon = horizon_min();
+    println!("Ranking horizon = {horizon:.0} min");
+    let ranks = score::rank_passes(&all_passes, &names, &transmitters, &weights, jd_now, horizon);
     score::print_ranks(&ranks, 10);
 
     let mut tracks: Vec<passes::LookAngleTrack> = Vec::new();
@@ -160,7 +176,7 @@ fn rank_only() -> Result<(), Box<dyn std::error::Error>> {
     std::fs::write("LOOK_ANGLES.json", serde_json::to_string_pretty(&tracks)?)?;
 
     //Settings + entries together, so the viewer can show how each score was built
-    let report = score::report(ranks, &weights, &station, &region, 15.0, jd_now);
+    let report = score::report(ranks, &weights, &station, &region, horizon, jd_now);
     std::fs::write("SATELLITE_RANKS.json", serde_json::to_string_pretty(&report)?)?;
 
     //The data ends at the propagation's t_end; warn when a fresh full run is due

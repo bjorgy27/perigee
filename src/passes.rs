@@ -73,6 +73,7 @@ pub struct Pass {
     pub range_at_max_km: f64,
     pub epoch_age_h: f64,       // how old the element set is at AOS
     pub el_now_deg: f64,        // elevation at jd_now if the pass is in progress, else 0
+    pub geostationary: bool,    // never sets: LOS is the end of the propagated data, not a real set
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -155,6 +156,8 @@ pub fn find_passes(
         let orbit = &orbits[col];
         let norad_id = sorted_sats[(0, col)] as u32;
         let epoch_jd = sorted_sats[(1, col)];
+        //Mean motion (row 2, rev/day): about 1 means the belt, and such a target never rises or sets
+        let geostationary = sorted_sats[(2, col)] < 1.1;
 
         //Look angles at every stored column
         let mut angles: Vec<LookAngle> = Vec::new();
@@ -210,6 +213,7 @@ pub fn find_passes(
                         az_at_los_deg: angles[c - 1].az_deg,
                         range_at_max_km: range_at_max,
                         epoch_age_h: (aos_jd - epoch_jd) * 24.0,
+                        geostationary,
                     });
                 }
             }
@@ -219,7 +223,35 @@ pub fn find_passes(
                 range_at_max = angles[c].range_km;
             }
         }
-        //A pass still in progress at the end of the data is dropped: its LOS is unknown
+        //A pass still in progress at the end of the data is dropped: its LOS is unknown.
+        //Except in the belt, where there is no LOS to find: a geostationary target sits still, so
+        //the window is closed at the end of the propagated data and marked, otherwise GOES and its
+        //neighbours would never produce a pass at all.
+        if above && geostationary {
+            let last = angles.len() - 1;
+            let los_jd = column_jd(sorted_sats, col, last, h);
+            if los_jd >= jd_now {
+                passes.push(Pass {
+                    el_now_deg: elevation_at(&angles, sorted_sats, col, h, jd_now, aos_jd, los_jd),
+                    column: col,
+                    norad_id,
+                    aos_jd,
+                    los_jd,
+                    aos_utc: jd_to_utc_string(aos_jd),
+                    aos_local: jd_to_local_string(aos_jd),
+                    los_utc: jd_to_utc_string(los_jd),
+                    los_local: jd_to_local_string(los_jd),
+                    duration_min: (los_jd - aos_jd) * 1440.0,
+                    max_el_deg: max_el,
+                    max_el_jd,
+                    az_at_aos_deg: az_at_aos,
+                    az_at_los_deg: angles[last].az_deg,
+                    range_at_max_km: range_at_max,
+                    epoch_age_h: (aos_jd - epoch_jd) * 24.0,
+                    geostationary,
+                });
+            }
+        }
     }
 
     passes

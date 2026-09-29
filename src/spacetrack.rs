@@ -38,7 +38,25 @@ pub use perigee_orbit::ElSetMatrix;
 
 
 //Space-Track API
-const ST_URL: &str = "https://www.space-track.org/basicspacedata/query/class/gp/MEAN_MOTION/>11.25/DECAY_DATE/null-val/OBJECT_TYPE/PAYLOAD/EPOCH/>now-30/orderby/NORAD_CAT_ID/format/json";
+//Which orbits to pull is set by PERIGEE_ORBITS (.env or the environment):
+//  leo  (default)   mean motion above 11.25 rev/day: the low passes Perigee was built for
+//  geo              mean motion 0.99..1.01 rev/day, near-circular: the geostationary belt (GOES, ...)
+//  all              both queries, merged
+//A geostationary target never rises or sets, so it appears as a single pass that is always in
+//progress: parked pointing rather than tracking, which is exactly what GOES HRIT wants.
+const ST_LEO: &str = "MEAN_MOTION/>11.25";
+const ST_GEO: &str = "MEAN_MOTION/0.99--1.01/ECCENTRICITY/<0.01";
+const ST_URL: &str = "https://www.space-track.org/basicspacedata/query/class/gp/{f}/DECAY_DATE/null-val/OBJECT_TYPE/PAYLOAD/EPOCH/>now-30/orderby/NORAD_CAT_ID/format/json";
+
+//(mode name, the element filters to fetch in order) from PERIGEE_ORBITS
+pub fn orbit_mode() -> (String, Vec<&'static str>) {
+    let mode = std::env::var("PERIGEE_ORBITS").unwrap_or_else(|_| "leo".into()).to_lowercase();
+    match mode.trim() {
+        "geo" | "gso" | "geostationary" => ("geo".into(), vec![ST_GEO]),
+        "all" | "both" | "leo+geo" => ("all".into(), vec![ST_LEO, ST_GEO]),
+        _ => ("leo".into(), vec![ST_LEO]),
+    }
+}
 //const ST_URL: &str = "https://www.space-track.org/basicspacedata/query/class/gp_history/NORAD_CAT_ID/25544/orderby/EPOCH desc/limit/22/format/json";
 const ST_LOGIN: &str = "https://www.space-track.org/ajaxauth/login";
 //One small query that proves a session works: the newest element set of the ISS
@@ -82,7 +100,7 @@ where
 
 
 
-//Pulling TLEs for every LEO satellite 
+//Pulling element sets for the orbits PERIGEE_ORBITS asks for (LEO, the geostationary belt, or both)
 pub fn get_sat_data() -> Result<Vec<Omm>, Error> {
 
     let client = reqwest::blocking::Client::builder()
@@ -101,18 +119,27 @@ pub fn get_sat_data() -> Result<Vec<Omm>, Error> {
         .send()?;
     println!("login_status {}", response.status());
 
-    let sat_data = client.get(ST_URL).send()?;
-    let status = sat_data.status();
-    let body = sat_data.text()?;
+    let (mode, filters) = orbit_mode();
+    println!("Orbits = {mode}");
 
-    println!("Space Track Status = {}", status);
-    //println!("body = {}", body);
+    //One query per filter, merged into a single array so ELSET.json keeps its shape
+    let mut records: Vec<serde_json::Value> = Vec::new();
+    for f in filters {
+        let sat_data = client.get(ST_URL.replace("{f}", f)).send()?;
+        let status = sat_data.status();
+        let body = sat_data.text()?;
+        println!("Space Track Status = {status}  ({f})");
+        let part: Vec<serde_json::Value> = serde_json::from_str(&body)?;
+        println!("  records = {}", part.len());
+        records.extend(part);
+    }
 
+    let merged = serde_json::to_string(&records)?;
     let mut file = File::create("ELSET.json")?;
-    write_file(&mut file, &body)?;
+    write_file(&mut file, &merged)?;
 
     //The JSON body is an array of OMM objects -> Vec<Omm>
-    let omms: Vec<Omm> = serde_json::from_str(&body)?;
+    let omms: Vec<Omm> = serde_json::from_str(&merged)?;
 
     Ok(omms)
 } 

@@ -92,7 +92,21 @@ fn fetch_group(client: &reqwest::blocking::Client, group: &str) -> Result<BTreeS
     Ok(recs.iter().filter_map(|r| r["NORAD_CAT_ID"].as_u64().map(|v| v as u32).or_else(|| r["NORAD_CAT_ID"].as_str().and_then(|s| s.parse().ok()))).collect())
 }
 
-pub fn build(tracked: &[u32], transmitters: &[Transmitter], fetch_celestrak: bool) -> Result<Categories, Error> {
+//Orbit classes, straight off the mean motion (rev/day) in the element sets: the viewer's TYPE menu
+//gets LEO and GEO entries for free, so the belt can be picked there instead of at the boot page.
+fn orbit_categories(tracked: &[u32], mean_motion: &HashMap<u32, f64>) -> Vec<Category> {
+    let pick = |f: &dyn Fn(f64) -> bool| -> Vec<u32> {
+        tracked.iter().copied().filter(|id| mean_motion.get(id).is_some_and(|n| f(*n))).collect()
+    };
+    let leo = pick(&|n| n >= 11.25);
+    let geo = pick(&|n| n < 1.1);
+    let mut out = Vec::new();
+    if !leo.is_empty() { out.push(Category { name: "LEO".into(), norads: leo }); }
+    if !geo.is_empty() { out.push(Category { name: "GEO".into(), norads: geo }); }
+    out
+}
+
+pub fn build(tracked: &[u32], transmitters: &[Transmitter], fetch_celestrak: bool, mean_motion: &HashMap<u32, f64>) -> Result<Categories, Error> {
 
     let tracked_set: HashSet<u32> = tracked.iter().copied().collect();
     let names = names_from_elset();
@@ -131,6 +145,10 @@ pub fn build(tracked: &[u32], transmitters: &[Transmitter], fetch_celestrak: boo
         classified.extend(members.iter());
         categories.push(Category { name: name.to_string(), norads: members.into_iter().collect() });
     }
+
+    //Orbit classes last, so they read as a separate pair at the bottom of the TYPE menu. They are not
+    //counted as "classified": a satellite is always in one of them, which would make that number useless.
+    categories.extend(orbit_categories(tracked, mean_motion));
 
     Ok(Categories {
         built_utc: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string(),
