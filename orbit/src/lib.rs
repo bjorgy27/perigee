@@ -1,8 +1,8 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// perigee-orbit: the orbit math shared by the Perigee engine (PC) and the Perigee viewer (desktop + TV).
+/// perigee-orbit: the orbit math shared by the Perigee engine (PC) and the Perigee viewer.
 ///
 /// Everything in here is plain arithmetic on nalgebra vectors: no network, no files, no clock. The callers
-/// pass the time in as a Julian date. That is what lets the same code compile for the Fire TV.
+/// pass the time in as a Julian date.
 ///
 ///   constants  physical constants (mu, J2, Earth radius, rotation, drag density)
 ///   coe        classical orbital elements (a 9-row element set matrix) -> inertial state vectors

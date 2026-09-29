@@ -23,7 +23,7 @@ mod spacetrack;
 mod catalog;
     use catalog::intersect;
 
-//Orbit math lives in the perigee-orbit crate (./orbit) so the TV viewer can run the same integrator
+//Orbit math lives in the perigee-orbit crate (./orbit) so the viewer can run the same integrator
     use perigee_orbit::{sv_from_coe, propagate_all};
 mod geodesy;
 mod categories;

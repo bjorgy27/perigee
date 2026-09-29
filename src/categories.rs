@@ -7,7 +7,7 @@
 ///   2. SatNOGS transmitter service classes (Meteorological, Radionavigational, Amateur, ...)
 ///   3. Name rules for what the other two miss (NOAA, USA, COSMOS, STARLINK, ...)
 /// A satellite may land in more than one category. Only the tracked set is written, to CATEGORIES.json,
-/// which tv/server.py serves to the TV as categories.json. Run `perigee categories` to rebuild it alone.
+/// which the viewer reads for its TYPE filter. Run `perigee categories` to rebuild it alone.
 /// CelesTrak asks not to pull the same file more than once every two hours; Perigee only fetches on a
 /// full run or on `perigee categories`, both started by hand.
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
