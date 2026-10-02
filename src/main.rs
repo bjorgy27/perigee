@@ -49,9 +49,12 @@ fn main() ->  Result<(), Box<dyn std::error::Error>> {
     if std::env::args().nth(1).as_deref() == Some("login") {
         return spacetrack::login_check();
     }
-    //"perigee rank": re-score from the saved files, no Space-Track / SatNOGS fetch, no propagation
+    //"perigee rank [<julian date>]": re-score from the saved files, no Space-Track / SatNOGS fetch, no
+    //propagation. With a Julian date it ranks for that moment instead of now, which is what the viewer
+    //passes while it is scrubbed forward in time.
     if std::env::args().nth(1).as_deref() == Some("rank") {
-        return rank_only();
+        let at = std::env::args().nth(2).and_then(|v| v.trim().parse::<f64>().ok()).filter(|v| *v > 2_400_000.0);
+        return rank_only(at);
     }
     //"perigee categories": rebuild CATEGORIES.json from the saved files + CelesTrak groups, nothing else
     if std::env::args().nth(1).as_deref() == Some("categories") {
@@ -145,7 +148,7 @@ fn categories_only() -> Result<(), Box<dyn std::error::Error>> {
 
 //Rank-only mode: load ORBIT_DATA.json / SORTED_SATS.json / NORADs.json written by a full run and
 //redo just the pass finding + ranking for the current time. Takes a second instead of a minute.
-fn rank_only() -> Result<(), Box<dyn std::error::Error>> {
+fn rank_only(at_jd: Option<f64>) -> Result<(), Box<dyn std::error::Error>> {
 
     let sorted_sats: ElSetMatrix = serde_json::from_str(&std::fs::read_to_string("SORTED_SATS.json")?)?;
     let orbits: Vec<Matrix6xX<f64>> = serde_json::from_str(&std::fs::read_to_string("ORBIT_DATA.json")?)?;
@@ -153,8 +156,10 @@ fn rank_only() -> Result<(), Box<dyn std::error::Error>> {
     println!("Loaded {} orbits from disk (rank only)", orbits.len());
 
     let station = geodesy::get_station();
-    let jd_now = geodesy::now_jd();
-    println!("Station {}  lat {:.4}  lon {:.4}  now {}", station.name, station.lat_deg, station.lon_deg, geodesy::jd_to_local_string(jd_now));
+    //Rank for the requested moment (the viewer's clock while it is scrubbed) or for now
+    let jd_now = at_jd.unwrap_or_else(geodesy::now_jd);
+    println!("Station {}  lat {:.4}  lon {:.4}  {} {}", station.name, station.lat_deg, station.lon_deg,
+             if at_jd.is_some() { "at" } else { "now" }, geodesy::jd_to_local_string(jd_now));
 
     //Sky window: VIEW_REGION.json from the viewer if present, otherwise the whole sky above 5 degrees
     let region = passes::ViewRegion::load("VIEW_REGION.json").unwrap_or_else(|| passes::ViewRegion::full_sky(5.0));
